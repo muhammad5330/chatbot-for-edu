@@ -1,9 +1,8 @@
 import streamlit as st
 import requests
-import logging
 
 # ==== CONFIGURATION ====
-GROQ_API_KEY = "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"  # <-- still hardcoded per your request
+GROQ_API_KEY = "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"  # <-- Paste your key here
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "llama3-8b-8192"
 
@@ -20,26 +19,16 @@ def get_career_advice(messages):
         "temperature": 0.7
     }
 
-    try:
-        response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=15)
-        if not response.ok:
-            # Log full detail internally
-            logging.error("GROQ API error: status=%s body=%s", response.status_code, response.text)
-            # Truncate and redact key for user-visible message
-            snippet = response.text[:1000].replace(GROQ_API_KEY, "[REDACTED]")
-            raise requests.exceptions.HTTPError(
-                f"Request failed with status {response.status_code}. Response snippet: {snippet}"
-            )
-        data = response.json()
-        return data['choices'][0]['message']['content']
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"Error calling career advice API: {e}") from e
+    response = requests.post(GROQ_API_URL, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json()['choices'][0]['message']['content']
 
 # ==== UI ====
 st.set_page_config(page_title="Career Path Chatbot", page_icon="🎓", layout="centered")
 st.title("🎓 Career Path Chatbot")
 st.write("Hi there! I'm here to help you figure out the best career options based on your interests and goals. Let's get started!")
 
+# ==== FORM ====
 with st.form("user_form"):
     name = st.text_input("Your Name")
     academic_interest = st.text_area("Your Academic Interests")
@@ -47,6 +36,7 @@ with st.form("user_form"):
     skills = st.text_area("Skills You Have (technical, communication, creative etc.)")
     submitted = st.form_submit_button("Submit and Start Chatting")
 
+# ==== INITIAL SYSTEM PROMPT ====
 if submitted:
     st.session_state.messages = [
         {
@@ -64,25 +54,20 @@ if submitted:
             )
         }
     ]
-    try:
-        bot_response = get_career_advice(st.session_state.messages)
-        st.session_state.messages.append({"role": "assistant", "content": bot_response})
-        st.chat_message("assistant").markdown(bot_response)
-    except Exception as e:
-        st.error(f"Failed to get career advice: {e}")
+    bot_response = get_career_advice(st.session_state.messages)
+    st.session_state.messages.append({"role": "assistant", "content": bot_response})
+    st.chat_message("assistant").markdown(bot_response)
 
+# ==== CHAT INTERFACE ====
 if "messages" in st.session_state:
-    for msg in st.session_state.messages[1:]:
+    for msg in st.session_state.messages[1:]:  # Skip system prompt
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
+    # User sends a message
     if prompt := st.chat_input("Ask more about your career options..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        try:
-            response = get_career_advice(st.session_state.messages)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.chat_message("user").markdown(prompt)
-            st.chat_message("assistant").markdown(response)
-        except Exception as e:
-            st.chat_message("user").markdown(prompt)
-            st.error(f"Error getting follow-up advice: {e}")
+        response = get_career_advice(st.session_state.messages)
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.chat_message("user").markdown(prompt)
+        st.chat_message("assistant").markdown(response)
